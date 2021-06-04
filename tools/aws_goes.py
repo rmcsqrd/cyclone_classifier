@@ -44,6 +44,22 @@ def gen_day_chunks(start, end):
         remainder = end - last
     yield end
 
+def gen_half_day_chunks(start, end):
+    """
+    Given end > start, yield the start, then the day boundaries in between,
+    and finally the end.
+    """
+    half_day = timedelta(hours=12)
+    remainder = end-start
+    if remainder.total_seconds() <= 0:
+        raise ValueError("end time must be larger than start time")
+    last = start
+    while remainder.total_seconds() > 0:
+        yield last
+        start_next_day = datetime(last.year, last.month, last.day, last.hour) + half_day
+        last = start_next_day
+        remainder = end - last
+    yield end
 
 def gen_hour_chunks(start, end):
     """
@@ -82,7 +98,7 @@ class GOESArchiveDownloader(object):
         prod_prefix = product.prefix(start)
         # And the full path including the first part of the filename
         start_marker = product.with_start_time(start)
-        print(prod_prefix, start_marker)
+#         print(prod_prefix, start_marker)
         return self._bucket.objects.filter(Marker=start_marker, Prefix=prod_prefix)
 
     def get_next(self, time, product):
@@ -94,19 +110,38 @@ class GOESArchiveDownloader(object):
             the comparison of obj.key <= end_key across hour or day boundaries
             will fail, especially for ABI products, where there is a channel to
             select.
+            
+            I modified the original function to only return the first item of
+            the iterator returned from the s3 object - this is theoretically
+            closest to the "top of the hour"
         """
         path, prod_mode, nc_basename = product.key_components()
-        print("prod_mode is", prod_mode)
+#         print("prod_mode is", prod_mode)
         end_key = product.with_start_time(end)
-
+        
+        top_of_hour = []
+        for obj in self._get_iter(start, product):
+            top_of_hour.append(obj.key)
+            
         # Get a list of files that have the proper prefix up to the hour
-        return list(itertools.takewhile(lambda obj: (obj.key <= end_key),
+        objects = list(itertools.takewhile(lambda obj: (obj.key <= end_key),
                                         self._get_iter(start, product)))
+        # return list with first item or empty list (empty list returns False in conditional statement)
+        return objects[:1] if objects else [] 
 
-    def get_range(self, start, end, product):
+
+    def get_range(self, start, end, product, day_length='full'):
         in_range = []
-        for t0, t1 in pairwise(gen_day_chunks(start, end)):
+        if day_length == 'half':
+            chunks = gen_half_day_chunks(start, end)
+        elif day_length == 'full':
+            chunks = gen_day_chunks(start, end)
+
+        print("Date Range:")
+        for t0, t1 in pairwise(chunks):
+            print("{}-{}".format(t0,t1))
             this_range = self.get_range_in_hour_chunks(t0, t1, product)
+            print(this_range)  # BONE
             in_range.extend(this_range)
         return in_range
 
@@ -179,3 +214,11 @@ def save_s3_product(s3obj, path):
     with open(outfile, 'wb') as f:
         data = obj.get()['Body'].read()
         f.write(data)
+
+# BONE, quick function for debugging
+# if __name__ == '__main__':
+#     from datetime import datetime
+#     startdate = datetime(2017, 9, 28, 23, 59, 0)
+#     enddate = datetime(2017, 10, 2, 23, 59, 0)
+#     arc = GOESArchiveDownloader()
+#     ABI_prods = arc.get_range(startdate, enddate, GOESProduct(typ='ABI', channel=9, sector='full'), day_length='half')#, satellite = 'goes17'))
