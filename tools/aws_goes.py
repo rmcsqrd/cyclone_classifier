@@ -137,11 +137,11 @@ class GOESArchiveDownloader(object):
         elif day_length == 'full':
             chunks = gen_day_chunks(start, end)
 
-        print("Date Range:")
+#         print("Date Range:")
         for t0, t1 in pairwise(chunks):
-            print("{}-{}".format(t0,t1))
+#             print("{}-{}".format(t0,t1))
             this_range = self.get_range_in_hour_chunks(t0, t1, product)
-            print(this_range)  # BONE
+#             print(this_range)  # BONE
             in_range.extend(this_range)
         return in_range
 
@@ -210,7 +210,7 @@ def save_s3_product(s3obj, path):
     obj = s3obj
     filename = obj.key.split('/')[-1]
     outfile = os.path.join(path, filename)
-    print(filename)
+#     print(filename)
     with open(outfile, 'wb') as f:
         data = obj.get()['Body'].read()
         f.write(data)
